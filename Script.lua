@@ -106,6 +106,181 @@ local orbitspeedslider = Tabs.Extra:CreateSlider("orbitspeed", { Title = "Orbit 
 local itemheightslider = Tabs.Extra:CreateSlider("itemheight", { Title = "Item Height", Min = -3, Max = 10, Rounding = 1, Default = 3 })
 --{END OF TAB ELEMENTS}
 -- =========================
+-- =========================
+-- TAB: Radar (animals)
+-- =========================
+local pg = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+Tabs.Radar = Tabs.Radar or Window:AddTab({ Title = "Radar" })
+
+local rd_on      = Tabs.Radar:CreateToggle("rd_on",      { Title = "Enable Radar", Default = false })
+local rd_overlay = Tabs.Radar:CreateToggle("rd_overlay", { Title = "On-screen circle", Default = true })
+local rd_range   = Tabs.Radar:CreateSlider ("rd_range",  { Title = "Range (studs)", Min = 25, Max = 600, Rounding = 0, Default = 200 })
+local rd_size    = Tabs.Radar:CreateSlider ("rd_size",   { Title = "Circle size (px)", Min = 120, Max = 300, Rounding = 0, Default = 180 })
+local rd_rotate  = Tabs.Radar:CreateToggle("rd_rotate",  { Title = "Rotate with facing", Default = true })
+local rd_maxdots = Tabs.Radar:CreateSlider ("rd_maxdots",{ Title = "Max dots", Min = 5, Max = 40, Rounding = 0, Default = 20 })
+local rd_alpha   = Tabs.Radar:CreateSlider ("rd_alpha",  { Title = "Opacity", Min = 0.2, Max = 1, Rounding = 2, Default = 0.85 })
+
+-- -------- overlay gui (без конфликтов с твоим MainGui)
+local RadarGui, Circle, DotPool, ActiveDots = nil, nil, {}, {}
+
+local function ensureGui()
+    if RadarGui and RadarGui.Parent then return end
+    RadarGui = Instance.new("ScreenGui")
+    RadarGui.Name = "_HerkleRadar"
+    RadarGui.IgnoreGuiInset = true
+    RadarGui.ResetOnSpawn = false
+    RadarGui.DisplayOrder = 9999
+    RadarGui.Parent = pg
+
+    Circle = Instance.new("Frame")
+    Circle.Name = "Circle"
+    Circle.AnchorPoint = Vector2.new(1, 0) -- правый верх
+    Circle.Position = UDim2.fromOffset(workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize.X - 20 or 1280, 20)
+    Circle.Size = UDim2.fromOffset(rd_size.Value, rd_size.Value)
+    Circle.BackgroundTransparency = 0.3
+    Circle.BackgroundColor3 = Color3.fromRGB(20,20,20)
+    Circle.BorderSizePixel = 0
+    Circle.Parent = RadarGui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(1, 0)
+    corner.Parent = Circle
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = 1
+    stroke.Color = Color3.fromRGB(220,220,220)
+    stroke.Transparency = 0.2
+    stroke.Parent = Circle
+end
+
+local function setGuiVisible(on)
+    if not RadarGui then return end
+    RadarGui.Enabled = on and rd_overlay.Value
+end
+
+local function applySizeOpacity()
+    if not Circle then return end
+    Circle.Size = UDim2.fromOffset(rd_size.Value, rd_size.Value)
+    Circle.BackgroundTransparency = 1 - (rd_alpha.Value or 0.85)
+end
+
+rd_size:OnChanged(applySizeOpacity)
+rd_alpha:OnChanged(applySizeOpacity)
+rd_overlay:OnChanged(function() setGuiVisible(rd_on.Value) end)
+rd_on:OnChanged(function() if rd_on.Value then ensureGui(); applySizeOpacity(); setGuiVisible(true) else setGuiVisible(false) end end)
+
+-- -------- helpers
+local plr = game.Players.LocalPlayer
+local function rootPart()
+    local ch = plr.Character
+    return ch and ch:FindFirstChild("HumanoidRootPart") or nil
+end
+
+local function isAnimal(m)
+    if not (m and m:IsA("Model")) then return false end
+    local n = m.Name:lower()
+    -- сюда можно добавить свои фильтры, если нужно
+    return true -- всё что в папках ниже считаем животными
+end
+
+local function collectAnimals(refPos, maxDist)
+    local list = {}
+    local function scan(folder)
+        if not folder then return end
+        for _,m in ipairs(folder:GetChildren()) do
+            if isAnimal(m) then
+                local pp = m.PrimaryPart or m:FindFirstChildWhichIsA("BasePart")
+                if pp then
+                    local d = (pp.Position - refPos).Magnitude
+                    if d <= maxDist then
+                        table.insert(list, {pos = pp.Position, d = d})
+                    end
+                end
+            end
+        end
+    end
+    scan(workspace:FindFirstChild("Critters"))
+    scan(workspace:FindFirstChild("Animals"))
+    table.sort(list, function(a,b) return a.d < b.d end)
+    return list
+end
+
+-- пул маленьких точек
+local function getDot(i)
+    if ActiveDots[i] then return ActiveDots[i] end
+    local dot = DotPool[i]
+    if not dot then
+        dot = Instance.new("Frame")
+        dot.Size = UDim2.fromOffset(6,6)
+        dot.BackgroundColor3 = Color3.fromRGB(255,255,255)
+        dot.BorderSizePixel = 0
+        local c = Instance.new("UICorner", dot); c.CornerRadius = UDim.new(1,0)
+        DotPool[i] = dot
+    end
+    dot.Parent = Circle
+    ActiveDots[i] = dot
+    return dot
+end
+
+local function clearDots(fromIndex)
+    for i=fromIndex, #ActiveDots do
+        local d = ActiveDots[i]
+        if d then d.Parent = nil end
+        ActiveDots[i] = nil
+    end
+end
+
+-- преобразование в координаты радара
+local function projectOnRadar(myCF, worldPos, maxDist, radius, rotate)
+    local rel = myCF:PointToObjectSpace(worldPos) -- локальные координаты
+    local x, z = rel.X, rel.Z
+    if not rotate then
+        -- «статичный» север вверх: возьмём глобальный вектор
+        local myPos = myCF.Position
+        x = worldPos.X - myPos.X
+        z = worldPos.Z - myPos.Z
+    end
+    -- вписываем в круг радиуса radius
+    local scale = math.min(1, (math.sqrt(x*x + z*z) / maxDist))
+    local nx = (x / maxDist) * radius
+    local nz = (z / maxDist) * radius
+    -- центр круга
+    local cx, cy = Circle.AbsoluteSize.X/2, Circle.AbsoluteSize.Y/2
+    return cx + nx, cy + nz
+end
+
+-- -------- основной цикл
+task.spawn(function()
+    while true do
+        if rd_on.Value then
+            if rd_overlay.Value then ensureGui() setGuiVisible(true) else setGuiVisible(false) end
+
+            local rp = rootPart()
+            if rp and (not rd_overlay.Value or (rd_overlay.Value and RadarGui)) then
+                local maxDist = rd_range.Value
+                local radius  = (Circle and Circle.AbsoluteSize.X or rd_size.Value) * 0.48
+                local list    = collectAnimals(rp.Position, maxDist)
+                local maxN    = math.min(#list, rd_maxdots.Value)
+
+                for i = 1, maxN do
+                    local dot = getDot(i)
+                    local wx, wy = projectOnRadar(rp.CFrame, list[i].pos, maxDist, radius, rd_rotate.Value)
+                    dot.Position = UDim2.fromOffset(wx - 3, wy - 3) -- центрируем точку
+                    dot.Visible  = rd_overlay.Value
+                end
+                clearDots(maxN + 1)
+            else
+                clearDots(1)
+            end
+            task.wait(0.12)
+        else
+            setGuiVisible(false)
+            clearDots(1)
+            task.wait(0.25)
+        end
+    end
+end)
+
 
 -- =========================
 -- Combat: Noclip (мягкий, без трогания GUI)
