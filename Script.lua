@@ -105,6 +105,105 @@ local orbitradiusslider = Tabs.Extra:CreateSlider("orbitradius", { Title = "Orbi
 local orbitspeedslider = Tabs.Extra:CreateSlider("orbitspeed", { Title = "Orbit Speed", Min = 0, Max = 10, Rounding = 1, Default = 5 })
 local itemheightslider = Tabs.Extra:CreateSlider("itemheight", { Title = "Item Height", Min = -3, Max = 10, Rounding = 1, Default = 3 })
 --{END OF TAB ELEMENTS}
+-- =========================
+-- TAB: Kill mobs — Ants (TP -> swing -> back)
+-- =========================
+local KillTab = Window:AddTab({ Title = "Kill mobs" }) -- без Icon
+
+-- UI
+local km_on     = KillTab:CreateToggle("km_ant_on",     { Title = "Auto-kill Ants (TP there & back)", Default = false })
+local km_range  = KillTab:CreateSlider("km_ant_range",  { Title = "Search range (studs)", Min = 5, Max = 250, Rounding = 0, Default = 120 })
+local km_cd     = KillTab:CreateSlider("km_ant_cd",     { Title = "Cooldown (s)", Min = 0.02, Max = 1.00, Rounding = 2, Default = 0.18 })
+local km_hits   = KillTab:CreateSlider("km_ant_hits",   { Title = "Swings per visit", Min = 1, Max = 5, Rounding = 0, Default = 2 })
+local km_height = KillTab:CreateSlider("km_ant_height", { Title = "TP height offset", Min = 0, Max = 8, Rounding = 1, Default = 3 })
+
+-- helpers
+local function getRoot()
+    local ch = plr.Character
+    return ch and ch:FindFirstChild("HumanoidRootPart") or nil
+end
+
+local function sendSwing(listOfEids)
+    -- пробуем локальную swingtool, иначе напрямую пакетом
+    if typeof(swingtool) == "function" then
+        local ok = pcall(function() swingtool(listOfEids) end)
+        if ok then return end
+    end
+    if packets and packets.SwingTool and packets.SwingTool.send then
+        pcall(function() packets.SwingTool.send(listOfEids) end)
+    end
+end
+
+local function getPrimary(model)
+    return model.PrimaryPart
+        or model:FindFirstChild("HumanoidRootPart")
+        or model:FindFirstChildWhichIsA("BasePart")
+end
+
+local function isAntModel(m)
+    if not m or not m:IsA("Model") then return false end
+    local n = string.lower(m.Name or "")
+    return n:find("ant") or n:find("мурав") -- «Ant», «Муравей», и т.п.
+end
+
+local function findNearestAnt(pos, range)
+    local bestEid, bestPos, bestDist = nil, nil, nil
+    local function scan(folder)
+        if not folder then return end
+        for _, m in ipairs(folder:GetChildren()) do
+            if isAntModel(m) then
+                local eid = m:GetAttribute("EntityID")
+                local pp  = getPrimary(m)
+                if eid and pp then
+                    local d = (pp.Position - pos).Magnitude
+                    if d <= range and (not bestDist or d < bestDist) then
+                        bestEid, bestPos, bestDist = eid, pp.Position, d
+                    end
+                end
+            end
+        end
+    end
+    scan(workspace:FindFirstChild("Critters"))
+    -- на случай, если муравьи лежат не в Critters:
+    scan(workspace)
+    return bestEid, bestPos
+end
+
+-- основной цикл
+task.spawn(function()
+    while true do
+        if Options.km_ant_on and Options.km_ant_on.Value then
+            local rootPart = getRoot()
+            if rootPart then
+                local range    = tonumber(Options.km_ant_range.Value)  or 120
+                local cooldown = tonumber(Options.km_ant_cd.Value)     or 0.18
+                local hits     = math.max(1, math.floor(tonumber(Options.km_ant_hits.Value) or 2))
+                local hOff     = tonumber(Options.km_ant_height.Value) or 3
+
+                local eid, antPos = findNearestAnt(rootPart.Position, range)
+                if eid and antPos then
+                    local oldCF = rootPart.CFrame
+                    -- тп чуть выше/рядом, чтобы не застрять в геометрии
+                    rootPart.CFrame = CFrame.new(antPos + Vector3.new(0, hOff, 0))
+                    -- несколько ударов для надёжности
+                    for i = 1, hits do
+                        sendSwing({ eid })
+                        task.wait(0.06)
+                    end
+                    -- назад
+                    rootPart.CFrame = oldCF
+                end
+
+                task.wait(cooldown)
+            else
+                task.wait(0.2)
+            end
+        else
+            task.wait(0.2)
+        end
+    end
+end)
+
 
 
 -- =========================
