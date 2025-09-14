@@ -106,6 +106,83 @@ local orbitspeedslider = Tabs.Extra:CreateSlider("orbitspeed", { Title = "Orbit 
 local itemheightslider = Tabs.Extra:CreateSlider("itemheight", { Title = "Item Height", Min = -3, Max = 10, Rounding = 1, Default = 3 })
 --{END OF TAB ELEMENTS}
 -- =========================
+
+-- ▼▼▼ UNDERCLIP (идти под блоками) — добавляет в таб Extra два контрола ▼▼▼
+
+-- элементы в уже существующем табе Extra
+local undercliptoggle = Tabs.Extra:CreateToggle("undercliptoggle", {
+    Title = "Underclip (go below blocks)", Default = false
+})
+local underdepthslider = Tabs.Extra:CreateSlider("underdepth", {
+    Title = "Depth below surface (studs)", Min = 0.5, Max = 20, Rounding = 1, Default = 3
+})
+
+-- коллизии + удержание Y ниже поверхности
+local noclipConn, underConn
+local rp = RaycastParams.new()
+rp.FilterType = Enum.RaycastFilterType.Exclude
+rp.FilterDescendantsInstances = {plr.Character}
+
+local function enableUnderclip()
+    -- держим CanCollide=false у всех частей персонажа
+    if noclipConn then noclipConn:Disconnect() end
+    noclipConn = runs.Stepped:Connect(function()
+        if not char then return end
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end)
+
+    -- позиционируем корень на глубину ниже ближайшей поверхности под нами
+    if underConn then underConn:Disconnect() end
+    underConn = runs.RenderStepped:Connect(function()
+        if not root then return end
+        local depth = tonumber(Options.underdepth.Value) or 3
+        -- луч вниз, чтобы найти «землю/блоки» под нами
+        local origin = root.Position + Vector3.new(0, 8, 0)
+        local hit = workspace:Raycast(origin, Vector3.new(0, -200, 0), rp)
+
+        local targetY
+        if hit then
+            targetY = hit.Position.Y - depth
+        else
+            -- если не нашли поверхность (пустота), опускаем понемногу
+            targetY = root.Position.Y - depth
+        end
+
+        -- переносим только по Y, чтобы не ломать движение
+        local p = root.Position
+        root.CFrame = CFrame.new(p.X, targetY, p.Z)
+    end)
+end
+
+local function disableUnderclip()
+    if underConn  then underConn:Disconnect();  underConn  = nil end
+    if noclipConn then noclipConn:Disconnect(); noclipConn = nil end
+end
+
+undercliptoggle:OnChanged(function(v)
+    if v then enableUnderclip() else disableUnderclip() end
+end)
+
+-- при респавне пере-включаем, если тумблер был включён
+plr.CharacterAdded:Connect(function(nch)
+    char = nch
+    root = nch:WaitForChild("HumanoidRootPart")
+    hum  = nch:WaitForChild("Humanoid")
+    rp.FilterDescendantsInstances = {nch}
+    if Options.undercliptoggle.Value then
+        -- маленькая задержка, чтобы части успели прогрузиться
+        task.wait(0.2)
+        enableUnderclip()
+    end
+end)
+
+-- ▲▲▲ END UNDERCLIP ▲▲▲
+
+
 -- =========================
 -- TAB: Kill mobs — Queen Ant's Servant
 -- =========================
