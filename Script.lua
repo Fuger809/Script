@@ -106,184 +106,487 @@ local orbitspeedslider = Tabs.Extra:CreateSlider("orbitspeed", { Title = "Orbit 
 local itemheightslider = Tabs.Extra:CreateSlider("itemheight", { Title = "Item Height", Min = -3, Max = 10, Rounding = 1, Default = 3 })
 --{END OF TAB ELEMENTS}
 -- =========================
--- =========================
--- TAB: Bird Radar (animals only birds)
--- =========================
-local pg = game.Players.LocalPlayer:WaitForChild("PlayerGui")
-Tabs.BirdRadar = Tabs.BirdRadar or Window:AddTab({ Title = "Bird Radar" })
+print("Loading Herkle Hub -- Booga Booga Reborn")
+print("-----------------------------------------")
+local Library = loadstring(game:HttpGetAsync("https://github.com/1dontgiveaf/Fluent-Renewed/releases/download/v1.0/Fluent.luau"))()
+local SaveManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/1dontgiveaf/Fluent-Renewed/refs/heads/main/Addons/SaveManager.luau"))()
+local InterfaceManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/1dontgiveaf/Fluent-Renewed/refs/heads/main/Addons/InterfaceManager.luau"))()
+ 
+local Window = Library:CreateWindow{
+    Title = "Herkle Hub -- Booga Booga Reborn",
+    SubTitle = "by herkle berlington",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(830, 525),
+    Resize = true,
+    MinSize = Vector2.new(470, 380),
+    Acrylic = true,
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl
+}
 
-local rdB_on      = Tabs.BirdRadar:CreateToggle("rdB_on",      { Title = "Enable", Default = false })
-local rdB_overlay = Tabs.BirdRadar:CreateToggle("rdB_overlay", { Title = "Show circle overlay", Default = true })
-local rdB_range   = Tabs.BirdRadar:CreateSlider ("rdB_range",  { Title = "Range (studs)", Min = 25, Max = 600, Rounding = 0, Default = 220 })
-local rdB_size    = Tabs.BirdRadar:CreateSlider ("rdB_size",   { Title = "Circle size (px)", Min = 120, Max = 300, Rounding = 0, Default = 180 })
-local rdB_rotate  = Tabs.BirdRadar:CreateToggle("rdB_rotate",  { Title = "Rotate with facing", Default = true })
-local rdB_maxdots = Tabs.BirdRadar:CreateSlider ("rdB_maxdots",{ Title = "Max dots", Min = 5, Max = 40, Rounding = 0, Default = 20 })
-local rdB_alpha   = Tabs.BirdRadar:CreateSlider ("rdB_alpha",  { Title = "Opacity", Min = 0.2, Max = 1, Rounding = 2, Default = 0.85 })
+local Tabs = {
+    Main = Window:AddTab({ Title = "Main", Icon = "menu" }),
+    Combat = Window:AddTab({ Title = "Combat", Icon = "axe" }),
+    Map = Window:AddTab({ Title = "Map", Icon = "trees" }),
+    Pickup = Window:AddTab({ Title = "Pickup", Icon = "backpack" }),
+    Farming = Window:AddTab({ Title = "Farming", Icon = "sprout" }),
+    Extra = Window:AddTab({ Title = "Extra", Icon = "plus" }),
+    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
+}
 
--- Только птицы: добавь свои слова при желании
-local BIRD_PATTERNS = { "bird", "seagull", "arctic", "snow" } -- lower-case
-
--- -------- overlay gui (самостоятельный, не трогает твой MainGui)
-local RadarGui, Circle, DotPool, ActiveDots = nil, nil, {}, {}
-
-local function ensureGui()
-    if RadarGui and RadarGui.Parent then return end
-    RadarGui = Instance.new("ScreenGui")
-    RadarGui.Name = "_HerkleBirdRadar"
-    RadarGui.IgnoreGuiInset = true
-    RadarGui.ResetOnSpawn = false
-    RadarGui.DisplayOrder = 9999
-    RadarGui.Parent = pg
-
-    Circle = Instance.new("Frame")
-    Circle.Name = "Circle"
-    Circle.AnchorPoint = Vector2.new(1, 0)
-    Circle.Position = UDim2.new(1, -20, 0, 20)           -- правый верх, отступы
-    Circle.Size = UDim2.fromOffset(rdB_size.Value, rdB_size.Value)
-    Circle.BackgroundTransparency = 1 - (rdB_alpha.Value or 0.85)
-    Circle.BackgroundColor3 = Color3.fromRGB(20,20,20)
-    Circle.BorderSizePixel = 0
-    Circle.Parent = RadarGui
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(1, 0)
-    corner.Parent = Circle
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Thickness = 1
-    stroke.Color = Color3.fromRGB(220,220,220)
-    stroke.Transparency = 0.2
-    stroke.Parent = Circle
-end
-
-local function setGuiVisible(on)
-    if not RadarGui then return end
-    RadarGui.Enabled = on and rdB_overlay.Value
-end
-
-local function applySizeOpacity()
-    if not Circle then return end
-    Circle.Size = UDim2.fromOffset(rdB_size.Value, rdB_size.Value)
-    Circle.BackgroundTransparency = 1 - (rdB_alpha.Value or 0.85)
-end
-
-rdB_size:OnChanged(applySizeOpacity)
-rdB_alpha:OnChanged(applySizeOpacity)
-rdB_overlay:OnChanged(function() setGuiVisible(rdB_on.Value) end)
-rdB_on:OnChanged(function() if rdB_on.Value then ensureGui(); applySizeOpacity(); setGuiVisible(true) else setGuiVisible(false) end end)
-
--- -------- helpers
+local rs = game:GetService("ReplicatedStorage")
+local packets = require(rs.Modules.Packets)
 local plr = game.Players.LocalPlayer
-local function rootPart()
-    local ch = plr.Character
-    return ch and ch:FindFirstChild("HumanoidRootPart") or nil
+local char = plr.Character or plr.CharacterAdded:Wait()
+local root = char:WaitForChild("HumanoidRootPart")
+local hum = char:WaitForChild("Humanoid")
+local runs = game:GetService("RunService")
+local httpservice = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local localiservice = game:GetService("LocalizationService")
+local marketservice = game:GetService("MarketplaceService")
+local rbxservice = game:GetService("RbxAnalyticsService")
+local placestructure
+local tspmo = game:GetService("TweenService")
+local itemslist = {
+"Adurite", "Berry", "Bloodfruit", "Bluefruit", "Coin", "Essence", "Hide", "Ice Cube", "Iron", "Jelly", "Leaves", "Log", "Steel", "Stone", "Wood", "Gold", "Raw Gold", "Crystal Chunk", "Raw Emerald", "Pink Diamond", "Raw Adurite", "Raw Iron", "Coal"}
+local Options = Library.Options
+--{MAIN TAB}
+local wstoggle = Tabs.Main:CreateToggle("wstoggle", { Title = "Walkspeed", Default = false })
+local wsslider = Tabs.Main:CreateSlider("wsslider", { Title = "Value", Min = 1, Max = 35, Rounding = 1, Default = 16 })
+local jptoggle = Tabs.Main:CreateToggle("jptoggle", { Title = "JumpPower", Default = false })
+local jpslider = Tabs.Main:CreateSlider("jpslider", { Title = "Value", Min = 1, Max = 65, Rounding = 1, Default = 50 })
+local hheighttoggle = Tabs.Main:CreateToggle("hheighttoggle", { Title = "HipHeight", Default = false })
+local hheightslider = Tabs.Main:CreateSlider("hheightslider", { Title = "Value", Min = 0.1, Max = 6.5, Rounding = 1, Default = 2 })
+local msatoggle = Tabs.Main:CreateToggle("msatoggle", { Title = "No Mountain Slip", Default = false })
+Tabs.Main:CreateButton({Title = "Copy Job ID", Callback = function() setclipboard(game.JobId) end})
+Tabs.Main:CreateButton({Title = "Copy HWID", Callback = function() setclipboard(rbxservice:GetClientId()) end})
+Tabs.Main:CreateButton({Title = "Copy SID", Callback = function() setclipboard(rbxservice:GetSessionId()) end})
+--{COMBAT TAB}
+local killauratoggle = Tabs.Combat:CreateToggle("killauratoggle", { Title = "Kill Aura", Default = false })
+local killaurarangeslider = Tabs.Combat:CreateSlider("killaurarange", { Title = "Range", Min = 1, Max = 9, Rounding = 1, Default = 5 })
+local katargetcountdropdown = Tabs.Combat:CreateDropdown("katargetcountdropdown", { Title = "Max Targets", Values = { "1", "2", "3", "4", "5", "6" }, Default = "1" })
+local kaswingcooldownslider = Tabs.Combat:CreateSlider("kaswingcooldownslider", { Title = "Attack Cooldown (s)", Min = 0.01, Max = 1.01, Rounding = 2, Default = 0.1 })
+--{MAP TAB}
+local resourceauratoggle = Tabs.Map:CreateToggle("resourceauratoggle", { Title = "Resource Aura", Default = false })
+local resourceaurarange = Tabs.Map:CreateSlider("resourceaurarange", { Title = "Range", Min = 1, Max = 20, Rounding = 1, Default = 20 })
+local resourcetargetdropdown = Tabs.Map:CreateDropdown("resourcetargetdropdown", { Title = "Max Targets", Values = { "1", "2", "3", "4", "5", "6" }, Default = "1" })
+local resourcecooldownslider = Tabs.Map:CreateSlider("resourcecooldownslider", { Title = "Swing Cooldown (s)", Min = 0.01, Max = 1.01, Rounding = 2, Default = 0.1 })
+local critterauratoggle = Tabs.Map:CreateToggle("critterauratoggle", { Title = "Critter Aura", Default = false })
+local critterrangeslider = Tabs.Map:CreateSlider("critterrangeslider", { Title = "Range", Min = 1, Max = 20, Rounding = 1, Default = 20 })
+local crittertargetdropdown = Tabs.Map:CreateDropdown("crittertargetdropdown", { Title = "Max Targets", Values = { "1", "2", "3", "4", "5", "6" }, Default = "1" })
+local crittercooldownslider = Tabs.Map:CreateSlider("crittercooldownslider", { Title = "Swing Cooldown (s)", Min = 0.01, Max = 1.01, Rounding = 2, Default = 0.1 })
+--{PICKUP TAB}
+local autopickuptoggle = Tabs.Pickup:CreateToggle("autopickuptoggle", { Title = "Auto Pickup", Default = false })
+local chestpickuptoggle = Tabs.Pickup:CreateToggle("chestpickuptoggle", { Title = "Auto Pickup From Chests", Default = false })
+local pickuprangeslider = Tabs.Pickup:CreateSlider("pickuprange", { Title = "Pickup Range", Min = 1, Max = 35, Rounding = 1, Default = 20 })
+local itemdropdown = Tabs.Pickup:CreateDropdown("itemdropdown", {Title = "Items", Values = {"Berry", "Bloodfruit", "Bluefruit", "Lemon", "Strawberry", "Gold", "Raw Gold", "Crystal Chunk", "Coin", "Coins", "Coin2", "Coin Stack", "Essence", "Emerald", "Raw Emerald", "Pink Diamond", "Raw Pink Diamond", "Void Shard","Jelly", "Magnetite", "Raw Magnetite", "Adurite", "Raw Adurite", "Ice Cube", "Stone", "Iron", "Raw Iron", "Steel", "Hide", "Leaves", "Log", "Wood", "Pie"}, Multi = true, Default = { Leaves = true, Log = true }})
+local droptoggle = Tabs.Pickup:AddToggle("droptoggle", { Title = "Auto Drop", Default = false })
+local dropdropdown = Tabs.Pickup:AddDropdown("dropdropdown", {Title = "Select Item to Drop", Values = { "Bloodfruit", "Jelly", "Bluefruit", "Log", "Leaves", "Wood" }, Default = "Bloodfruit"})
+local droptogglemanual = Tabs.Pickup:AddToggle("droptogglemanual", { Title = "Auto Drop Custom", Default = false })
+local droptextbox = Tabs.Pickup:AddInput("droptextbox", { Title = "Custom Item", Default = "Bloodfruit", Numeric = false, Finished = false })
+-- Добавляем вкладку Tp-pos
+Tabs.TpPos = Window:AddTab({ Title = "Tp-pos", Icon = "location" })
+
+--{FARMING TAB}
+local fruitdropdown = Tabs.Farming:CreateDropdown("fruitdropdown", {Title = "Select Fruit",Values = {"Bloodfruit", "Bluefruit", "Lemon", "Coconut", "Jelly", "Banana", "Orange", "Oddberry", "Berry", "Strangefruit", "Strawberry", "Sunjfruit", "Pumpkin", "Prickly Pear", "Apple",  "Barley", "Cloudberry", "Carrot"}, Default = "Bloodfruit"})
+local planttoggle = Tabs.Farming:CreateToggle("planttoggle", { Title = "Auto Plant", Default = false })
+local plantrangeslider = Tabs.Farming:CreateSlider("plantrange", { Title = "Plant Range", Min = 1, Max = 30, Rounding = 1, Default = 30 })
+local plantdelayslider = Tabs.Farming:CreateSlider("plantdelay", { Title = "Plant Delay (s)", Min = 0.01, Max = 1, Rounding = 2, Default = 0.1 })
+local harvesttoggle = Tabs.Farming:CreateToggle("harvesttoggle", { Title = "Auto Harvest", Default = false })
+local harvestrangeslider = Tabs.Farming:CreateSlider("harvestrange", { Title = "Harvest Range", Min = 1, Max = 30, Rounding = 1, Default = 30 })
+Tabs.Farming:CreateParagraph("Aligned Paragraph", {Title = "Tween Stuff", Content = "wish this ui was more like linoria :(", TitleAlignment = "Middle", ContentAlignment = Enum.TextXAlignment.Center})
+local tweenplantboxtoggle = Tabs.Farming:AddToggle("tweentoplantbox", { Title = "Tween to Plant Box", Default = false })
+local tweenbushtoggle = Tabs.Farming:AddToggle("tweentobush", { Title = "Tween to Bush + Plant Box", Default = false })
+local tweenrangeslider = Tabs.Farming:AddSlider("tweenrange", { Title = "Range", Min = 1, Max = 250, Rounding = 1, Default = 250 })
+Tabs.Farming:CreateParagraph("Aligned Paragraph", {Title = "Plantbox Stuff", Content = "wish this ui was more like linoria :(", TitleAlignment = "Middle", ContentAlignment = Enum.TextXAlignment.Center})
+Tabs.Farming:CreateButton({Title = "Place 16x16 Plantboxes (256)", Callback = function() placestructure(16) end })
+Tabs.Farming:CreateButton({Title = "Place 15x15 Plantboxes (225)", Callback = function() placestructure(15) end })
+Tabs.Farming:CreateButton({Title = "Place 10x10 Plantboxes (100)", Callback = function() placestructure(10) end })
+Tabs.Farming:CreateButton({Title = "Place 5x5 Plantboxes (25)", Callback = function() placestructure(5) end })
+--{EXTRA TAB}
+Tabs.Extra:CreateButton({Title = "Infinite Yield", Description = "inf yield chat", Callback = function() loadstring(game:HttpGet("https://raw.githubusercontent.com/decryp1/herklesiy/refs/heads/main/hiy"))()end})
+Tabs.Extra:CreateParagraph("Aligned Paragraph", {Title = "orbit breaks sometimes", Content = "i dont give a shit", TitleAlignment = "Middle", ContentAlignment = Enum.TextXAlignment.Center})
+local orbittoggle = Tabs.Extra:CreateToggle("orbittoggle", { Title = "Item Orbit", Default = false })
+local orbitrangeslider = Tabs.Extra:CreateSlider("orbitrange", { Title = "Grab Range", Min = 1, Max = 50, Rounding = 1, Default = 20 })
+local orbitradiusslider = Tabs.Extra:CreateSlider("orbitradius", { Title = "Orbit Radius", Min = 0, Max = 30, Rounding = 1, Default = 10 })
+local orbitspeedslider = Tabs.Extra:CreateSlider("orbitspeed", { Title = "Orbit Speed", Min = 0, Max = 10, Rounding = 1, Default = 5 })
+local itemheightslider = Tabs.Extra:CreateSlider("itemheight", { Title = "Item Height", Min = -3, Max = 10, Rounding = 1, Default = 3 })
+--{END OF TAB ELEMENTS}
+
+
+
+
+
+
+-- ====== Movement (Humanoid:MoveTo) — вместо BV ======
+local Players = game:GetService("Players")
+local RS = game:GetService("RunService")
+local LP = Players.LocalPlayer
+
+local function ghrp() local ch=LP.Character return ch and ch:FindFirstChild("HumanoidRootPart") end
+local function ghum() local ch=LP.Character return ch and ch:FindFirstChildOfClass("Humanoid") end
+
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+rayParams.FilterDescendantsInstances = {LP.Character}
+
+local function groundSnapXZ(x, z, defaultY)
+    local y = (defaultY or (ghrp() and ghrp().Position.Y or 50)) + 40
+    local hit = workspace:Raycast(Vector3.new(x, y, z), Vector3.new(0, -500, 0), rayParams)
+    return Vector3.new(x, (hit and hit.Position.Y + 0.1) or (defaultY or 0), z)
 end
 
-local function isBirdModel(m)
-    if not (m and m:IsA("Model")) then return false end
-    local n = m.Name:lower()
-    for _,pat in ipairs(BIRD_PATTERNS) do
-        if string.find(n, pat, 1, true) then return true end
+-- перемещение в точку (Humanoid:MoveTo) с анти-застреванием
+local function moveToPoint(toPos, timeout)
+    local h = ghum(); local r = ghrp()
+    if not (h and r) then return false end
+    local oldWS = h.WalkSpeed
+    h.WalkSpeed = gr_speed.Value
+    local tol = gr_tol.Value
+
+    local target = groundSnapXZ(toPos.X, toPos.Z, r.Position.Y)
+    h:MoveTo(target)
+
+    local t0 = tick()
+    local last = r.Position
+    local movedAt = tick()
+
+    while gr_on.Value do
+        r = ghrp(); if not r then break end
+
+        local planar = Vector3.new(target.X, r.Position.Y, target.Z)
+        local d = (planar - r.Position).Magnitude
+        if d <= tol then
+            h:MoveTo(r.Position)
+            h.WalkSpeed = oldWS
+            return true
+        end
+
+        -- анти-залипание: если стоим >1.2s — переотправляем MoveTo
+        if (r.Position - last).Magnitude > 0.2 then
+            movedAt = tick()
+            last = r.Position
+        end
+        if tick() - movedAt > 1.2 then
+            h:MoveTo(target)
+            movedAt = tick()
+        end
+
+        if timeout and (tick() - t0) > timeout then
+            h.WalkSpeed = oldWS
+            return false
+        end
+        RS.Heartbeat:Wait()
     end
+
+    if h then h.WalkSpeed = oldWS end
     return false
 end
 
-local function collectBirds(refPos, maxDist)
-    local list = {}
+-- пробежать по списку точек
+local function runPath(points)
+    if not points or #points == 0 then return end
+    for i = 1, #points do
+        if not gr_on.Value then break end
+        moveToPoint(points[i], 8) -- таймаут на сегмент
+    end
+end
+
+
+-- ================================
+-- TAB: Gold Run (nearest Gold Node)
+-- ================================
+local Players = game:GetService("Players")
+local PFS     = game:GetService("PathfindingService")
+local RS      = game:GetService("RunService")
+local LP      = Players.LocalPlayer
+
+Tabs.GoldRun = Tabs.GoldRun or Window:AddTab({ Title = "Gold Run", Icon = "map" })
+
+-- UI
+local gr_on     = Tabs.GoldRun:CreateToggle("gr_on",   { Title = "Enable", Default = false })
+local gr_loop   = Tabs.GoldRun:CreateToggle("gr_loop", { Title = "Loop", Default = true })
+local gr_show   = Tabs.GoldRun:CreateToggle("gr_show", { Title = "Show dots", Default = true })
+local gr_range  = Tabs.GoldRun:CreateSlider ("gr_rng", { Title = "Scan range (studs)", Min = 200, Max = 4000, Default = 4000 })
+local gr_speed  = Tabs.GoldRun:CreateSlider ("gr_spd", { Title = "Run speed", Min = 12, Max = 40, Default = 22 })
+local gr_tol    = Tabs.GoldRun:CreateSlider ("gr_tol", { Title = "Stop tolerance", Min = 0.4, Max = 1.6, Rounding = 2, Default = 0.9 })
+local gr_plan   = Tabs.GoldRun:CreateSlider ("gr_pln", { Title = "Plan time (sec)", Min = 3, Max = 15, Default = 10 })
+Tabs.GoldRun:CreateButton({ Title = "Plan now",   Callback = function() task.spawn(function() _G_GR_PlanOnly() end) end })
+Tabs.GoldRun:CreateButton({ Title = "Stop & clear", Callback = function() gr_on:SetValue(false); _G_GR_Clear() end })
+
+-- helpers
+local function HRP() local ch = LP.Character return ch and ch:FindFirstChild("HumanoidRootPart") end
+local function HUM() local ch = LP.Character return ch and ch:FindFirstChildOfClass("Humanoid") end
+
+local function isGoldModel(m)
+    return m and m:IsA("Model") and (m.Name == "Gold Node" or m.Name == "GoldNode" or m.Name:lower():find("gold"))
+end
+
+-- дистанция HUD
+local ui = Instance.new("ScreenGui")
+ui.Name = "_GoldRunUI"; ui.IgnoreGuiInset = true; ui.ResetOnSpawn = false
+ui.Parent = LP:WaitForChild("PlayerGui")
+
+local card = Instance.new("Frame", ui)
+card.AnchorPoint = Vector2.new(0.5,1)
+card.Position = UDim2.new(0.5,0,1,-8)
+card.Size = UDim2.fromOffset(260, 40)
+card.BackgroundColor3 = Color3.fromRGB(18,18,22)
+card.BorderSizePixel = 0
+card.Visible = false
+Instance.new("UICorner", card).CornerRadius = UDim.new(0, 10)
+
+local lbl = Instance.new("TextLabel", card)
+lbl.BackgroundTransparency = 1
+lbl.Size = UDim2.fromScale(1,1)
+lbl.Font = Enum.Font.GothamBold
+lbl.TextSize = 14
+lbl.TextColor3 = Color3.fromRGB(235,235,240)
+lbl.Text = "Gold: —"
+
+-- точки маршрута
+local dotsFolder
+local function clearDots()
+    if dotsFolder and dotsFolder.Parent then dotsFolder:Destroy() end
+    dotsFolder = nil
+end
+
+local function putDot(pos)
+    local p = Instance.new("Part")
+    p.Anchored = true
+    p.CanCollide = false
+    p.Material = Enum.Material.Neon
+    p.Color = Color3.fromRGB(255, 206, 74)
+    p.Shape = Enum.PartType.Ball
+    p.Size = Vector3.new(0.4,0.4,0.4)  -- чёткие маленькие точки
+    p.CFrame = CFrame.new(pos)
+    p.Parent = dotsFolder
+end
+
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+rayParams.FilterDescendantsInstances = {LP.Character}
+
+local function groundY(x, z, baseY)
+    local originY = (baseY or (HRP() and HRP().Position.Y or 40)) + 50
+    local hit = workspace:Raycast(Vector3.new(x, originY, z), Vector3.new(0, -400, 0), rayParams)
+    return (hit and hit.Position.Y + 0.05) or (baseY or 0)
+end
+
+-- поиск ближайшего Gold Node
+local function nearestGold(maxRange)
+    local r = HRP(); if not r then return nil end
+    local me = r.Position
+    local best, bestD
     local function scan(folder)
         if not folder then return end
         for _,m in ipairs(folder:GetChildren()) do
-            if isBirdModel(m) then
+            if isGoldModel(m) then
                 local pp = m.PrimaryPart or m:FindFirstChildWhichIsA("BasePart")
                 if pp then
-                    local d = (pp.Position - refPos).Magnitude
-                    if d <= maxDist then
-                        table.insert(list, {pos = pp.Position, d = d})
+                    local d = (pp.Position - me).Magnitude
+                    if d <= maxRange then
+                        if not best or d < bestD then best, bestD = pp, d end
                     end
                 end
             end
         end
     end
-    scan(workspace:FindFirstChild("Critters"))
-    scan(workspace:FindFirstChild("Animals"))
-    table.sort(list, function(a,b) return a.d < b.d end)
-    return list
+    scan(workspace:FindFirstChild("Resources"))
+    scan(workspace)
+    return best, bestD
 end
 
--- пул точек
-local function getDot(i)
-    if ActiveDots[i] then return ActiveDots[i] end
-    local dot = DotPool[i]
-    if not dot then
-        dot = Instance.new("Frame")
-        dot.Size = UDim2.fromOffset(6,6)
-        dot.BackgroundColor3 = Color3.fromRGB(255,255,255)
-        dot.BorderSizePixel = 0
-        Instance.new("UICorner", dot).CornerRadius = UDim.new(1,0)
-        DotPool[i] = dot
-    end
-    dot.Parent = Circle
-    ActiveDots[i] = dot
-    return dot
-end
-
-local function clearDots(fromIndex)
-    for i=fromIndex, #ActiveDots do
-        local d = ActiveDots[i]
-        if d then d.Parent = nil end
-        ActiveDots[i] = nil
-    end
-end
-
--- проекция на круг
-local function projectOnRadar(myCF, worldPos, maxDist, radius, rotate)
-    local x, z
-    if rotate then
-        local rel = myCF:PointToObjectSpace(worldPos)
-        x, z = rel.X, rel.Z
+-- построение пути и рисование точек
+local function buildPath(toPos)
+    local r = HRP(); if not r then return {} end
+    local y = r.Position.Y
+    local path = PFS:CreatePath({AgentRadius=2, AgentHeight=5, AgentCanJump=true})
+    local ok = pcall(function() path:ComputeAsync(r.Position, toPos) end)
+    local pts = {}
+    if ok and path.Status == Enum.PathStatus.Success then
+        for _,w in ipairs(path:GetWaypoints()) do
+            table.insert(pts, Vector3.new(w.Position.X, groundY(w.Position.X, w.Position.Z, y), w.Position.Z))
+        end
     else
-        local myPos = myCF.Position
-        x, z = worldPos.X - myPos.X, worldPos.Z - myPos.Z
+        -- fallback: прямая
+        table.insert(pts, Vector3.new(r.Position.X, groundY(r.Position.X, r.Position.Z, y), r.Position.Z))
+        table.insert(pts, Vector3.new(toPos.X,      groundY(toPos.X,      toPos.Z,      y), toPos.Z))
     end
-    local nx = math.clamp(x / maxDist, -1, 1) * radius
-    local nz = math.clamp(z / maxDist, -1, 1) * radius
-    local cx, cy = Circle.AbsoluteSize.X/2, Circle.AbsoluteSize.Y/2
-    return cx + nx, cy + nz
+    -- рисуем точки по шагу
+    clearDots()
+    if not gr_show.Value then return pts end
+    dotsFolder = Instance.new("Folder"); dotsFolder.Name = "_GoldDots"; dotsFolder.Parent = workspace
+
+    local step = 4.0
+    for i=1, #pts-1 do
+        local a, b = pts[i], pts[i+1]
+        local seg = b - a
+        local len = seg.Magnitude
+        local dir = seg.Unit
+        for t=0, len, step do
+            putDot(Vector3.new(a.X, groundY(a.X + dir.X*t, a.Z + dir.Z*t, a.Y), a.Z) + dir * t)
+        end
+    end
+    return pts
 end
 
--- -------- основной цикл
+-- движение по пути (Humanoid:MoveTo) с анти-залипанием
+local function runPath(points)
+    local h = HUM(); local r = HRP()
+    if not (h and r) then return end
+    card.Visible = true
+    local oldWS = h.WalkSpeed; h.WalkSpeed = gr_speed.Value
+
+    for i=1, #points do
+        if not gr_on.Value then break end
+        local target = points[i]
+        local tol = gr_tol.Value
+        h:MoveTo(Vector3.new(target.X, target.Y, target.Z))
+
+        local t0 = tick()
+        local lastPos = r.Position
+        local movedAt = tick()
+
+        while gr_on.Value do
+            r = HRP(); if not r then break end
+            local planar = Vector3.new(target.X, r.Position.Y, target.Z)
+            local d = (planar - r.Position).Magnitude
+            lbl.Text = string.format("Gold: %dm • step %d/%d", math.floor(((points[#points] - r.Position).Magnitude)), i, #points)
+
+            if d <= tol then break end
+            if (r.Position - lastPos).Magnitude > 0.25 then movedAt = tick(); lastPos = r.Position end
+            if tick() - movedAt > 1.2 then h:MoveTo(Vector3.new(target.X, target.Y, target.Z)); movedAt = tick() end
+            if tick() - t0 > 8 then break end
+            RS.Heartbeat:Wait()
+        end
+    end
+
+    h.WalkSpeed = oldWS
+    card.Visible = false
+end
+
+-- публичные действия
+function _G_GR_Clear()
+    clearDots()
+    card.Visible = false
+end
+
+function _G_GR_PlanOnly()
+    local r = HRP(); if not r then return end
+    local node, dist = nearestGold(gr_range.Value)
+    if not node then
+        lbl.Text = "Gold: not found"
+        card.Visible = true
+        task.delay(1.2, function() card.Visible = false end)
+        return
+    end
+    lbl.Text = string.format("Nearest gold: %dm (planning…)", math.floor(dist))
+    card.Visible = true
+    buildPath(node.Position)
+end
+
+-- главный раннер
 task.spawn(function()
     while true do
-        if rdB_on.Value then
-            if rdB_overlay.Value then ensureGui() setGuiVisible(true) else setGuiVisible(false) end
-
-            local rp = rootPart()
-            if rp and (not rdB_overlay.Value or (rdB_overlay.Value and RadarGui)) then
-                local maxDist = rdB_range.Value
-                local radius  = (Circle and Circle.AbsoluteSize.X or rdB_size.Value) * 0.48
-                local birds   = collectBirds(rp.Position, maxDist)
-                local maxN    = math.min(#birds, rdB_maxdots.Value)
-
-                for i = 1, maxN do
-                    local dot = getDot(i)
-                    local wx, wy = projectOnRadar(rp.CFrame, birds[i].pos, maxDist, radius, rdB_rotate.Value)
-                    dot.Position = UDim2.fromOffset(wx - 3, wy - 3) -- центр
-                    dot.Visible  = rdB_overlay.Value
-                end
-                clearDots(maxN + 1)
-            else
-                clearDots(1)
-            end
-            task.wait(0.12)
+        if not gr_on.Value then
+            _G_GR_Clear()
+            task.wait(0.2)
         else
-            setGuiVisible(false)
-            clearDots(1)
-            task.wait(0.25)
+            local h = HUM(); local r = HRP()
+            if not (h and r) then task.wait(0.2) goto continue end
+
+            local node, dist = nearestGold(gr_range.Value)
+            if not node then
+                lbl.Text = "Gold: not found"
+                card.Visible = true
+                task.wait(1.0)
+                goto continue
+            end
+
+            -- план: рисуем путь и ждём заданное время
+            local pts = buildPath(node.Position)
+            local tLeft = gr_plan.Value
+            while gr_on.Value and tLeft > 0 do
+                r = HRP(); if not r then break end
+                local curD = (node.Position - r.Position).Magnitude
+                lbl.Text = string.format("Gold: %dm • start in %ds", math.floor(curD), math.ceil(tLeft))
+                tLeft -= RS.Heartbeat:Wait()
+            end
+
+            if gr_on.Value then
+                -- бег по точкам
+                runPath(pts)
+                clearDots()
+                -- если не лупаем — выключаемся
+                if not gr_loop.Value then
+                    gr_on:SetValue(false)
+                end
+            end
         end
+        ::continue::
     end
 end)
 
 
+
+
+
+orbitrangeslider:OnChanged(function(value) range = value end)
+orbitradiusslider:OnChanged(function(value) orbitradius = value end)
+orbitspeedslider:OnChanged(function(value) orbitspeed = value end)
+itemheightslider:OnChanged(function(value) itemheight = value end)
+
+runs.RenderStepped:Connect(function()
+    if not orbiton then return end
+    local time = tick() * orbitspeed
+    for item, bp in pairs(attacheditems) do
+        if item then
+            local angle = itemangles[item] + time
+            bp.Position = root.Position + Vector3.new(math.cos(angle) * orbitradius, itemheight, math.sin(angle) * orbitradius)
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        if orbiton then
+            local children, index = itemsfolder:GetChildren(), 0
+            local anglestep = (math.pi * 2) / math.max(#children, 1)
+
+            for _, item in pairs(children) do
+                local primary = item:IsA("BasePart") and item or item:IsA("Model") and item.PrimaryPart
+                if primary and (primary.Position - root.Position).Magnitude <= range then
+                    if not attacheditems[primary] then
+                        local bp = Instance.new("BodyPosition")
+                        bp.MaxForce, bp.D, bp.P, bp.Parent = Vector3.new(math.huge, math.huge, math.huge), 1500, 25000, primary
+                        attacheditems[primary], itemangles[primary], lastpositions[primary] = bp, index * anglestep, primary.Position
+                        index += 1
+                    end
+                end
+            end
+        end
+        task.wait()
+    end
+end)
+
+SaveManager:SetLibrary(Library)
+InterfaceManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes{}
+InterfaceManager:SetFolder("FluentScriptHub")
+SaveManager:SetFolder("FluentScriptHub/specific-game")
+InterfaceManager:BuildInterfaceSection(Tabs.Settings)
+SaveManager:BuildConfigSection(Tabs.Settings)
+Window:SelectTab(1)
+Library:Notify{
+    Title = "Herkle Hub",
+    Content = "Loaded, Enjoy!",
+    Duration = 8
+}
+SaveManager:LoadAutoloadConfig()
+print("Done! Enjoy Herkle Hub!")
 
 -- =========================
 -- Combat: Noclip (мягкий, без трогания GUI)
