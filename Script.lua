@@ -107,26 +107,29 @@ local itemheightslider = Tabs.Extra:CreateSlider("itemheight", { Title = "Item H
 --{END OF TAB ELEMENTS}
 -- =========================
 -- =========================
--- TAB: Radar (animals)
+-- TAB: Bird Radar (animals only birds)
 -- =========================
 local pg = game.Players.LocalPlayer:WaitForChild("PlayerGui")
-Tabs.Radar = Tabs.Radar or Window:AddTab({ Title = "Radar" })
+Tabs.BirdRadar = Tabs.BirdRadar or Window:AddTab({ Title = "Bird Radar" })
 
-local rd_on      = Tabs.Radar:CreateToggle("rd_on",      { Title = "Enable Radar", Default = false })
-local rd_overlay = Tabs.Radar:CreateToggle("rd_overlay", { Title = "On-screen circle", Default = true })
-local rd_range   = Tabs.Radar:CreateSlider ("rd_range",  { Title = "Range (studs)", Min = 25, Max = 600, Rounding = 0, Default = 200 })
-local rd_size    = Tabs.Radar:CreateSlider ("rd_size",   { Title = "Circle size (px)", Min = 120, Max = 300, Rounding = 0, Default = 180 })
-local rd_rotate  = Tabs.Radar:CreateToggle("rd_rotate",  { Title = "Rotate with facing", Default = true })
-local rd_maxdots = Tabs.Radar:CreateSlider ("rd_maxdots",{ Title = "Max dots", Min = 5, Max = 40, Rounding = 0, Default = 20 })
-local rd_alpha   = Tabs.Radar:CreateSlider ("rd_alpha",  { Title = "Opacity", Min = 0.2, Max = 1, Rounding = 2, Default = 0.85 })
+local rdB_on      = Tabs.BirdRadar:CreateToggle("rdB_on",      { Title = "Enable", Default = false })
+local rdB_overlay = Tabs.BirdRadar:CreateToggle("rdB_overlay", { Title = "Show circle overlay", Default = true })
+local rdB_range   = Tabs.BirdRadar:CreateSlider ("rdB_range",  { Title = "Range (studs)", Min = 25, Max = 600, Rounding = 0, Default = 220 })
+local rdB_size    = Tabs.BirdRadar:CreateSlider ("rdB_size",   { Title = "Circle size (px)", Min = 120, Max = 300, Rounding = 0, Default = 180 })
+local rdB_rotate  = Tabs.BirdRadar:CreateToggle("rdB_rotate",  { Title = "Rotate with facing", Default = true })
+local rdB_maxdots = Tabs.BirdRadar:CreateSlider ("rdB_maxdots",{ Title = "Max dots", Min = 5, Max = 40, Rounding = 0, Default = 20 })
+local rdB_alpha   = Tabs.BirdRadar:CreateSlider ("rdB_alpha",  { Title = "Opacity", Min = 0.2, Max = 1, Rounding = 2, Default = 0.85 })
 
--- -------- overlay gui (без конфликтов с твоим MainGui)
+-- Только птицы: добавь свои слова при желании
+local BIRD_PATTERNS = { "bird", "seagull", "arctic", "snow" } -- lower-case
+
+-- -------- overlay gui (самостоятельный, не трогает твой MainGui)
 local RadarGui, Circle, DotPool, ActiveDots = nil, nil, {}, {}
 
 local function ensureGui()
     if RadarGui and RadarGui.Parent then return end
     RadarGui = Instance.new("ScreenGui")
-    RadarGui.Name = "_HerkleRadar"
+    RadarGui.Name = "_HerkleBirdRadar"
     RadarGui.IgnoreGuiInset = true
     RadarGui.ResetOnSpawn = false
     RadarGui.DisplayOrder = 9999
@@ -134,10 +137,10 @@ local function ensureGui()
 
     Circle = Instance.new("Frame")
     Circle.Name = "Circle"
-    Circle.AnchorPoint = Vector2.new(1, 0) -- правый верх
-    Circle.Position = UDim2.fromOffset(workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize.X - 20 or 1280, 20)
-    Circle.Size = UDim2.fromOffset(rd_size.Value, rd_size.Value)
-    Circle.BackgroundTransparency = 0.3
+    Circle.AnchorPoint = Vector2.new(1, 0)
+    Circle.Position = UDim2.new(1, -20, 0, 20)           -- правый верх, отступы
+    Circle.Size = UDim2.fromOffset(rdB_size.Value, rdB_size.Value)
+    Circle.BackgroundTransparency = 1 - (rdB_alpha.Value or 0.85)
     Circle.BackgroundColor3 = Color3.fromRGB(20,20,20)
     Circle.BorderSizePixel = 0
     Circle.Parent = RadarGui
@@ -155,19 +158,19 @@ end
 
 local function setGuiVisible(on)
     if not RadarGui then return end
-    RadarGui.Enabled = on and rd_overlay.Value
+    RadarGui.Enabled = on and rdB_overlay.Value
 end
 
 local function applySizeOpacity()
     if not Circle then return end
-    Circle.Size = UDim2.fromOffset(rd_size.Value, rd_size.Value)
-    Circle.BackgroundTransparency = 1 - (rd_alpha.Value or 0.85)
+    Circle.Size = UDim2.fromOffset(rdB_size.Value, rdB_size.Value)
+    Circle.BackgroundTransparency = 1 - (rdB_alpha.Value or 0.85)
 end
 
-rd_size:OnChanged(applySizeOpacity)
-rd_alpha:OnChanged(applySizeOpacity)
-rd_overlay:OnChanged(function() setGuiVisible(rd_on.Value) end)
-rd_on:OnChanged(function() if rd_on.Value then ensureGui(); applySizeOpacity(); setGuiVisible(true) else setGuiVisible(false) end end)
+rdB_size:OnChanged(applySizeOpacity)
+rdB_alpha:OnChanged(applySizeOpacity)
+rdB_overlay:OnChanged(function() setGuiVisible(rdB_on.Value) end)
+rdB_on:OnChanged(function() if rdB_on.Value then ensureGui(); applySizeOpacity(); setGuiVisible(true) else setGuiVisible(false) end end)
 
 -- -------- helpers
 local plr = game.Players.LocalPlayer
@@ -176,19 +179,21 @@ local function rootPart()
     return ch and ch:FindFirstChild("HumanoidRootPart") or nil
 end
 
-local function isAnimal(m)
+local function isBirdModel(m)
     if not (m and m:IsA("Model")) then return false end
     local n = m.Name:lower()
-    -- сюда можно добавить свои фильтры, если нужно
-    return true -- всё что в папках ниже считаем животными
+    for _,pat in ipairs(BIRD_PATTERNS) do
+        if string.find(n, pat, 1, true) then return true end
+    end
+    return false
 end
 
-local function collectAnimals(refPos, maxDist)
+local function collectBirds(refPos, maxDist)
     local list = {}
     local function scan(folder)
         if not folder then return end
         for _,m in ipairs(folder:GetChildren()) do
-            if isAnimal(m) then
+            if isBirdModel(m) then
                 local pp = m.PrimaryPart or m:FindFirstChildWhichIsA("BasePart")
                 if pp then
                     local d = (pp.Position - refPos).Magnitude
@@ -205,7 +210,7 @@ local function collectAnimals(refPos, maxDist)
     return list
 end
 
--- пул маленьких точек
+-- пул точек
 local function getDot(i)
     if ActiveDots[i] then return ActiveDots[i] end
     local dot = DotPool[i]
@@ -214,7 +219,7 @@ local function getDot(i)
         dot.Size = UDim2.fromOffset(6,6)
         dot.BackgroundColor3 = Color3.fromRGB(255,255,255)
         dot.BorderSizePixel = 0
-        local c = Instance.new("UICorner", dot); c.CornerRadius = UDim.new(1,0)
+        Instance.new("UICorner", dot).CornerRadius = UDim.new(1,0)
         DotPool[i] = dot
     end
     dot.Parent = Circle
@@ -230,21 +235,18 @@ local function clearDots(fromIndex)
     end
 end
 
--- преобразование в координаты радара
+-- проекция на круг
 local function projectOnRadar(myCF, worldPos, maxDist, radius, rotate)
-    local rel = myCF:PointToObjectSpace(worldPos) -- локальные координаты
-    local x, z = rel.X, rel.Z
-    if not rotate then
-        -- «статичный» север вверх: возьмём глобальный вектор
+    local x, z
+    if rotate then
+        local rel = myCF:PointToObjectSpace(worldPos)
+        x, z = rel.X, rel.Z
+    else
         local myPos = myCF.Position
-        x = worldPos.X - myPos.X
-        z = worldPos.Z - myPos.Z
+        x, z = worldPos.X - myPos.X, worldPos.Z - myPos.Z
     end
-    -- вписываем в круг радиуса radius
-    local scale = math.min(1, (math.sqrt(x*x + z*z) / maxDist))
-    local nx = (x / maxDist) * radius
-    local nz = (z / maxDist) * radius
-    -- центр круга
+    local nx = math.clamp(x / maxDist, -1, 1) * radius
+    local nz = math.clamp(z / maxDist, -1, 1) * radius
     local cx, cy = Circle.AbsoluteSize.X/2, Circle.AbsoluteSize.Y/2
     return cx + nx, cy + nz
 end
@@ -252,21 +254,21 @@ end
 -- -------- основной цикл
 task.spawn(function()
     while true do
-        if rd_on.Value then
-            if rd_overlay.Value then ensureGui() setGuiVisible(true) else setGuiVisible(false) end
+        if rdB_on.Value then
+            if rdB_overlay.Value then ensureGui() setGuiVisible(true) else setGuiVisible(false) end
 
             local rp = rootPart()
-            if rp and (not rd_overlay.Value or (rd_overlay.Value and RadarGui)) then
-                local maxDist = rd_range.Value
-                local radius  = (Circle and Circle.AbsoluteSize.X or rd_size.Value) * 0.48
-                local list    = collectAnimals(rp.Position, maxDist)
-                local maxN    = math.min(#list, rd_maxdots.Value)
+            if rp and (not rdB_overlay.Value or (rdB_overlay.Value and RadarGui)) then
+                local maxDist = rdB_range.Value
+                local radius  = (Circle and Circle.AbsoluteSize.X or rdB_size.Value) * 0.48
+                local birds   = collectBirds(rp.Position, maxDist)
+                local maxN    = math.min(#birds, rdB_maxdots.Value)
 
                 for i = 1, maxN do
                     local dot = getDot(i)
-                    local wx, wy = projectOnRadar(rp.CFrame, list[i].pos, maxDist, radius, rd_rotate.Value)
-                    dot.Position = UDim2.fromOffset(wx - 3, wy - 3) -- центрируем точку
-                    dot.Visible  = rd_overlay.Value
+                    local wx, wy = projectOnRadar(rp.CFrame, birds[i].pos, maxDist, radius, rdB_rotate.Value)
+                    dot.Position = UDim2.fromOffset(wx - 3, wy - 3) -- центр
+                    dot.Visible  = rdB_overlay.Value
                 end
                 clearDots(maxN + 1)
             else
@@ -280,6 +282,7 @@ task.spawn(function()
         end
     end
 end)
+
 
 
 -- =========================
