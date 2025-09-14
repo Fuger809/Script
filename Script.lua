@@ -108,191 +108,73 @@ local itemheightslider = Tabs.Extra:CreateSlider("itemheight", { Title = "Item H
 -- =========================
 
 -- =========================
--- TAB: Underclip (мягкий/жёсткий HipHeight вниз)
+-- Combat: Noclip (мягкий, без трогания GUI)
 -- =========================
 
--- создаём вкладку без иконки, чтобы точно не падало
-Tabs.Underclip = Tabs.Underclip or Window:AddTab({ Title = "Underclip" })
-
-local Options = Library.Options
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local plr = Players.LocalPlayer
-
--- элементы UI
-local uclip_toggle = Tabs.Underclip:CreateToggle("uclip_on", {
-    Title = "Enable Underclip (override HipHeight)",
+-- тумблер в табе Combat
+local noclip_toggle = Tabs.Combat:CreateToggle("noclip_toggle", {
+    Title = "Noclip",
     Default = false
 })
 
-local uclip_value = Tabs.Underclip:CreateSlider("uclip_value", {
-    Title = "HipHeight target",
-    Min = -6.0,      -- сделай -10/-20, если нужно ещё ниже
-    Max = 10.0,
-    Rounding = 2,
-    Default = -1.50  -- стартуем мягко
-})
+-- состояние и коннект
+local Noclip = { conn = nil, saved = {} }
 
-local uclip_soft = Tabs.Underclip:CreateToggle("uclip_soft", {
-    Title = "Soft mode (smooth move)",
-    Default = true
-})
-
-local uclip_speed = Tabs.Underclip:CreateSlider("uclip_speed", {
-    Title = "Smooth speed",
-    Min = 0.10, Max = 5.00, Rounding = 2, Default = 1.20
-})
-
-Tabs.Underclip:CreateButton({
-    Title = "Reset HipHeight to 2.0",
-    Callback = function()
-        local ch = plr.Character
-        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-        if hum then hum.HipHeight = 2.0 end
-    end
-})
-
--- раннер: ставим HipHeight на Heartbeat, чтобы «перебивать» другие апдейтеры
-RunService.Heartbeat:Connect(function(dt)
-    local on = Options.uclip_on and Options.uclip_on.Value
-    if not on then return end
-
+-- мягко отключаем коллизии всем BasePart персонажа
+local function applyNoclip()
     local ch = plr.Character
-    local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-    if not hum then return end
+    if not ch then return end
+    for _,v in ipairs(ch:GetDescendants()) do
+        if v:IsA("BasePart") then
+            -- запоминаем исходное, чтобы потом вернуть
+            if Noclip.saved[v] == nil then
+                Noclip.saved[v] = v.CanCollide
+            end
+            v.CanCollide = false
+        end
+    end
+end
 
-    local target = tonumber(Options.uclip_value.Value) or -1.5
-    if Options.uclip_soft and Options.uclip_soft.Value then
-        -- экспоненциальное сглаживание: чем выше speed, тем быстрее сходится
-        local speed = tonumber(Options.uclip_speed.Value) or 1.2
-        local alpha = 1 - math.exp(-speed * dt)
-        hum.HipHeight = hum.HipHeight + (target - hum.HipHeight) * alpha
+-- вернуть исходные коллизии
+local function restoreCollide()
+    for part, was in pairs(Noclip.saved) do
+        if part and part.Parent then
+            part.CanCollide = was
+        end
+    end
+    table.clear(Noclip.saved)
+end
+
+-- запуск/стоп поддерживающего цикла
+local function startNoclip()
+    if Noclip.conn then return end
+    applyNoclip()
+    -- Stepped — до шага физики, чтобы «перебивать» любые попытки вернуть коллизию
+    Noclip.conn = runs.Stepped:Connect(function()
+        applyNoclip()
+    end)
+end
+
+local function stopNoclip()
+    if Noclip.conn then Noclip.conn:Disconnect(); Noclip.conn = nil end
+    restoreCollide()
+end
+
+-- реакция на тумблер
+noclip_toggle:OnChanged(function(on)
+    if on then startNoclip() else stopNoclip() end
+end)
+
+-- при респавне — если включено, переактивируем
+plr.CharacterAdded:Connect(function()
+    if Options.noclip_toggle and Options.noclip_toggle.Value then
+        -- даём персонажу прогрузиться
+        task.defer(startNoclip)
     else
-        hum.HipHeight = target
+        stopNoclip()
     end
 end)
 
--- подсказка в UI (не критично)
-Tabs.Underclip:CreateParagraph("uclip_hint", {
-    Title = "Hint",
-    Content = "Для underclip держи твой обычный HipHeight-тумблер (на Main) выключенным, чтобы не конфликтовали."
-})
-
-
-
-
-
--- =========================
--- TAB: Kill mobs — Queen Ant's Servant
--- =========================
-local KillTab = (Tabs and Tabs.KillMobs) or Window:AddTab({ Title = "Kill mobs" })
-if Tabs then Tabs.KillMobs = KillTab end
-
--- UI
-local km_on      = KillTab:CreateToggle("km_qserv_on",      { Title = "Auto-kill: Queen Ant's Servant", Default = false })
-local km_range   = KillTab:CreateSlider("km_qserv_range",   { Title = "Search range (studs)", Min = 5, Max = 250, Rounding = 0, Default = 120 })
-local km_cd      = KillTab:CreateSlider("km_qserv_cd",      { Title = "Cooldown (s)", Min = 0.02, Max = 1.00, Rounding = 2, Default = 0.18 })
-local km_hits    = KillTab:CreateSlider("km_qserv_hits",    { Title = "Swings per visit", Min = 1, Max = 5, Rounding = 0, Default = 2 })
-local km_height  = KillTab:CreateSlider("km_qserv_height",  { Title = "TP height offset", Min = 0, Max = 8, Rounding = 1, Default = 3 })
-local km_targets = KillTab:CreateSlider("km_qserv_targets", { Title = "Max targets per visit", Min = 1, Max = 4, Rounding = 0, Default = 1 })
-
--- helpers
-local Players = game:GetService("Players")
-local LP = Players.LocalPlayer
-
-local function getRoot()
-    local ch = LP.Character
-    return ch and ch:FindFirstChild("HumanoidRootPart") or nil
-end
-
-local function sendSwing(eids)
-    if typeof(swingtool) == "function" then
-        local ok = pcall(function() swingtool(eids) end)
-        if ok then return end
-    end
-    if packets and packets.SwingTool and packets.SwingTool.send then
-        pcall(function() packets.SwingTool.send(eids) end)
-    end
-end
-
-local function getPrimary(m)
-    return m.PrimaryPart or m:FindFirstChild("HumanoidRootPart") or m:FindFirstChildWhichIsA("BasePart")
-end
-
-local function isQueenServant(m)
-    if not (m and m:IsA("Model")) then return false end
-    local n = string.lower(m.Name or "")
-    return n:find("queen ant's servant", 1, true) ~= nil
-end
-
-local function collectQueenServants(centerPos, range)
-    local out = {}
-
-    local function scan(folder)
-        if not folder then return end
-        for _, m in ipairs(folder:GetChildren()) do
-            if isQueenServant(m) then
-                local eid = m:GetAttribute("EntityID")
-                local pp  = getPrimary(m)
-                if eid and pp then
-                    local d = (pp.Position - centerPos).Magnitude
-                    if d <= range then
-                        table.insert(out, { eid = eid, pos = pp.Position, dist = d })
-                    end
-                end
-            end
-        end
-    end
-
-    scan(workspace:FindFirstChild("Critters"))
-    scan(workspace:FindFirstChild("Enemies"))
-    scan(workspace) -- на всякий случай
-
-    table.sort(out, function(a,b) return a.dist < b.dist end)
-    return out
-end
-
--- основной цикл
-task.spawn(function()
-    while true do
-        if Options.km_qserv_on and Options.km_qserv_on.Value then
-            local root = getRoot()
-            if root then
-                local range    = tonumber(Options.km_qserv_range.Value)   or 120
-                local cooldown = tonumber(Options.km_qserv_cd.Value)      or 0.18
-                local hits     = math.max(1, math.floor(tonumber(Options.km_qserv_hits.Value) or 2))
-                local hOff     = tonumber(Options.km_qserv_height.Value)  or 3
-                local maxT     = math.max(1, math.floor(tonumber(Options.km_qserv_targets.Value) or 1))
-
-                local ants = collectQueenServants(root.Position, range)
-                if #ants > 0 then
-                    -- берём до maxT ближайших
-                    local toKill = {}
-                    for i = 1, math.min(maxT, #ants) do
-                        table.insert(toKill, ants[i].eid)
-                    end
-
-                    local oldCF = root.CFrame
-                    local tpPos = ants[1].pos + Vector3.new(0, hOff, 0)
-                    pcall(function() root.CFrame = CFrame.new(tpPos) end)
-
-                    for i = 1, hits do
-                        sendSwing(toKill)
-                        task.wait(0.06)
-                    end
-
-                    pcall(function() root.CFrame = oldCF end)
-                end
-
-                task.wait(cooldown)
-            else
-                task.wait(0.25)
-            end
-        else
-            task.wait(0.25)
-        end
-    end
-end)
 
 
 
