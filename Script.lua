@@ -107,98 +107,140 @@ local itemheightslider = Tabs.Extra:CreateSlider("itemheight", { Title = "Item H
 --{END OF TAB ELEMENTS}
 -- =========================
 
--- ==== Soft Underclip (плавный) ====
+-- =========================
+-- TAB: Clip (мягкий underclip)
+-- =========================
 local UIS = game:GetService("UserInputService")
 local RS  = game:GetService("RunService")
+local Players = game:GetService("Players")
 
--- Если вдруг этих переменных нет в твоём месте — раскомментируй 3 строки ниже:
--- local plr  = game.Players.LocalPlayer
--- local char = plr.Character or plr.CharacterAdded:Wait()
--- local root = char:WaitForChild("HumanoidRootPart")
+local u_plr  = Players.LocalPlayer
+local u_char = u_plr.Character or u_plr.CharacterAdded:Wait()
+local u_root = u_char:WaitForChild("HumanoidRootPart")
 
-local Underclip = {
+u_plr.CharacterAdded:Connect(function(ch)
+    u_char = ch
+    u_root = ch:WaitForChild("HumanoidRootPart")
+end)
+
+-- создаём вкладку без иконки
+local ClipTab = Window:AddTab({ Title = "Clip" })
+
+-- параметры по умолчанию
+local U = {
     enabled  = false,
-    step     = 0.15,   -- насколько опускаем за один шаг (меньше = мягче)
-    total    = 2.0,    -- общая глубина опускания (изменяй по вкусу)
-    interval = 0.05,   -- задержка между шагами (больше = мягче)
-    noclip   = true    -- выключать коллизии на время клипа
+    step     = 0.15,   -- шаг вниз/вверх за тик
+    total    = 2.0,    -- общая глубина клипа
+    interval = 0.05,   -- задержка между шагами
+    noclip   = true,   -- отключать коллизии на время клипа
 }
 
-local noclipConn
+-- элементы UI
+local ui_step     = ClipTab:CreateSlider("u_step",     { Title = "Step (studs)",     Min = 0.05, Max = 0.5,  Rounding = 2, Default = U.step })
+local ui_total    = ClipTab:CreateSlider("u_total",    { Title = "Depth (studs)",    Min = 0.5,  Max = 6.0,  Rounding = 2, Default = U.total })
+local ui_interval = ClipTab:CreateSlider("u_interval", { Title = "Interval (s)",     Min = 0.02, Max = 0.15, Rounding = 2, Default = U.interval })
+local ui_noclip   = ClipTab:CreateToggle("u_noclip",   { Title = "Noclip while clipping", Default = U.noclip })
+local ui_hotkeys  = ClipTab:CreateToggle("u_hotkeys",  { Title = "Hotkeys: Ctrl+Down / Ctrl+Up", Default = true })
 
+-- актуализация параметров
+local function syncFromUI()
+    U.step     = tonumber(Options.u_step and Options.u_step.Value) or U.step
+    U.total    = tonumber(Options.u_total and Options.u_total.Value) or U.total
+    U.interval = tonumber(Options.u_interval and Options.u_interval.Value) or U.interval
+    U.noclip   = (Options.u_noclip and Options.u_noclip.Value) and true or false
+end
+ui_step:OnChanged(syncFromUI)
+ui_total:OnChanged(syncFromUI)
+ui_interval:OnChanged(syncFromUI)
+ui_noclip:OnChanged(syncFromUI)
+
+-- noclip только во время клипа
+local noclipConn
 local function setNoclip(on)
     if noclipConn then noclipConn:Disconnect(); noclipConn = nil end
     if on then
         noclipConn = RS.Stepped:Connect(function()
-            if not Underclip.enabled or not char then return end
-            for _,v in ipairs(char:GetDescendants()) do
+            if not U.enabled or not u_char then return end
+            for _,v in ipairs(u_char:GetDescendants()) do
                 if v:IsA("BasePart") then v.CanCollide = false end
             end
         end)
     end
 end
 
+-- безопасная проверка пола внизу (чтобы не улететь)
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
-rayParams.FilterDescendantsInstances = {char}
+rayParams.FilterDescendantsInstances = {u_char}
+u_plr.CharacterAdded:Connect(function(ch)
+    -- обновим фильтр, когда персонаж сменится
+    rayParams.FilterDescendantsInstances = {ch}
+end)
 
 local function groundOk()
-    if not root then return false end
-    local res = workspace:Raycast(root.Position, Vector3.new(0,-30,0), rayParams)
+    if not u_root then return false end
+    local res = workspace:Raycast(u_root.Position, Vector3.new(0,-30,0), rayParams)
     return res ~= nil
 end
 
-local function stopUnderclip()
-    Underclip.enabled = false
+local function stopClip()
+    U.enabled = false
     setNoclip(false)
 end
 
-local function startUnderclip()
-    if Underclip.enabled then return end
-    if not root or not root.Parent then return end
-    if not groundOk() then return end  -- нет пола внизу — не клипуемся
+local function underclipDown()
+    syncFromUI()
+    if U.enabled then return end
+    if not u_root or not u_root.Parent then return end
+    if not groundOk() then return end
 
-    Underclip.enabled = true
-    if Underclip.noclip then setNoclip(true) end
+    U.enabled = true
+    if U.noclip then setNoclip(true) end
 
     task.spawn(function()
         local moved = 0
-        while Underclip.enabled and moved < Underclip.total do
-            if not root or not root.Parent then break end
+        while U.enabled and moved < U.total do
+            if not u_root or not u_root.Parent then break end
             if not groundOk() then break end
-            root.CFrame = root.CFrame * CFrame.new(0, -Underclip.step, 0)
-            moved += Underclip.step
-            task.wait(Underclip.interval)
+            u_root.CFrame = u_root.CFrame * CFrame.new(0, -U.step, 0)
+            moved += U.step
+            task.wait(U.interval)
         end
-        stopUnderclip()
+        stopClip()
     end)
 end
 
--- Мягкий подъём (выбраться вверх)
-local function softUnclipUp(amount)
-    amount = amount or Underclip.total
+local function unclipUp(amount)
+    syncFromUI()
+    amount = tonumber(amount) or U.total
     task.spawn(function()
         local done = 0
         while done < amount do
-            if not root or not root.Parent then break end
-            root.CFrame = root.CFrame * CFrame.new(0, Underclip.step, 0)
-            done += Underclip.step
-            task.wait(Underclip.interval)
+            if not u_root or not u_root.Parent then break end
+            u_root.CFrame = u_root.CFrame * CFrame.new(0, U.step, 0)
+            done += U.step
+            task.wait(U.interval)
         end
     end)
 end
 
--- Горячие клавиши: Ctrl+Down — вниз, Ctrl+Up — вверх
+-- кнопки
+ClipTab:CreateButton({ Title = "Underclip ↓", Callback = underclipDown })
+ClipTab:CreateButton({ Title = "Unclip ↑",    Callback = function() unclipUp() end })
+
+-- хоткеи (по желанию)
 UIS.InputBegan:Connect(function(input, gp)
     if gp then return end
+    if not (Options.u_hotkeys and Options.u_hotkeys.Value) then return end
     if UIS:IsKeyDown(Enum.KeyCode.LeftControl) or UIS:IsKeyDown(Enum.KeyCode.RightControl) then
         if input.KeyCode == Enum.KeyCode.Down then
-            startUnderclip()
+            underclipDown()
         elseif input.KeyCode == Enum.KeyCode.Up then
-            softUnclipUp()
+            unclipUp()
         end
     end
 end)
+
 
 
 
