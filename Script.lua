@@ -107,80 +107,99 @@ local itemheightslider = Tabs.Extra:CreateSlider("itemheight", { Title = "Item H
 --{END OF TAB ELEMENTS}
 -- =========================
 
--- ▼▼▼ UNDERCLIP (идти под блоками) — добавляет в таб Extra два контрола ▼▼▼
+-- ==== Soft Underclip (плавный) ====
+local UIS = game:GetService("UserInputService")
+local RS  = game:GetService("RunService")
 
--- элементы в уже существующем табе Extra
-local undercliptoggle = Tabs.Extra:CreateToggle("undercliptoggle", {
-    Title = "Underclip (go below blocks)", Default = false
-})
-local underdepthslider = Tabs.Extra:CreateSlider("underdepth", {
-    Title = "Depth below surface (studs)", Min = 0.5, Max = 20, Rounding = 1, Default = 3
-})
+-- Если вдруг этих переменных нет в твоём месте — раскомментируй 3 строки ниже:
+-- local plr  = game.Players.LocalPlayer
+-- local char = plr.Character or plr.CharacterAdded:Wait()
+-- local root = char:WaitForChild("HumanoidRootPart")
 
--- коллизии + удержание Y ниже поверхности
-local noclipConn, underConn
-local rp = RaycastParams.new()
-rp.FilterType = Enum.RaycastFilterType.Exclude
-rp.FilterDescendantsInstances = {plr.Character}
+local Underclip = {
+    enabled  = false,
+    step     = 0.15,   -- насколько опускаем за один шаг (меньше = мягче)
+    total    = 2.0,    -- общая глубина опускания (изменяй по вкусу)
+    interval = 0.05,   -- задержка между шагами (больше = мягче)
+    noclip   = true    -- выключать коллизии на время клипа
+}
 
-local function enableUnderclip()
-    -- держим CanCollide=false у всех частей персонажа
-    if noclipConn then noclipConn:Disconnect() end
-    noclipConn = runs.Stepped:Connect(function()
-        if not char then return end
-        for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
-            end
-        end
-    end)
+local noclipConn
 
-    -- позиционируем корень на глубину ниже ближайшей поверхности под нами
-    if underConn then underConn:Disconnect() end
-    underConn = runs.RenderStepped:Connect(function()
-        if not root then return end
-        local depth = tonumber(Options.underdepth.Value) or 3
-        -- луч вниз, чтобы найти «землю/блоки» под нами
-        local origin = root.Position + Vector3.new(0, 8, 0)
-        local hit = workspace:Raycast(origin, Vector3.new(0, -200, 0), rp)
-
-        local targetY
-        if hit then
-            targetY = hit.Position.Y - depth
-        else
-            -- если не нашли поверхность (пустота), опускаем понемногу
-            targetY = root.Position.Y - depth
-        end
-
-        -- переносим только по Y, чтобы не ломать движение
-        local p = root.Position
-        root.CFrame = CFrame.new(p.X, targetY, p.Z)
-    end)
-end
-
-local function disableUnderclip()
-    if underConn  then underConn:Disconnect();  underConn  = nil end
+local function setNoclip(on)
     if noclipConn then noclipConn:Disconnect(); noclipConn = nil end
+    if on then
+        noclipConn = RS.Stepped:Connect(function()
+            if not Underclip.enabled or not char then return end
+            for _,v in ipairs(char:GetDescendants()) do
+                if v:IsA("BasePart") then v.CanCollide = false end
+            end
+        end)
+    end
 end
 
-undercliptoggle:OnChanged(function(v)
-    if v then enableUnderclip() else disableUnderclip() end
-end)
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+rayParams.FilterDescendantsInstances = {char}
 
--- при респавне пере-включаем, если тумблер был включён
-plr.CharacterAdded:Connect(function(nch)
-    char = nch
-    root = nch:WaitForChild("HumanoidRootPart")
-    hum  = nch:WaitForChild("Humanoid")
-    rp.FilterDescendantsInstances = {nch}
-    if Options.undercliptoggle.Value then
-        -- маленькая задержка, чтобы части успели прогрузиться
-        task.wait(0.2)
-        enableUnderclip()
+local function groundOk()
+    if not root then return false end
+    local res = workspace:Raycast(root.Position, Vector3.new(0,-30,0), rayParams)
+    return res ~= nil
+end
+
+local function stopUnderclip()
+    Underclip.enabled = false
+    setNoclip(false)
+end
+
+local function startUnderclip()
+    if Underclip.enabled then return end
+    if not root or not root.Parent then return end
+    if not groundOk() then return end  -- нет пола внизу — не клипуемся
+
+    Underclip.enabled = true
+    if Underclip.noclip then setNoclip(true) end
+
+    task.spawn(function()
+        local moved = 0
+        while Underclip.enabled and moved < Underclip.total do
+            if not root or not root.Parent then break end
+            if not groundOk() then break end
+            root.CFrame = root.CFrame * CFrame.new(0, -Underclip.step, 0)
+            moved += Underclip.step
+            task.wait(Underclip.interval)
+        end
+        stopUnderclip()
+    end)
+end
+
+-- Мягкий подъём (выбраться вверх)
+local function softUnclipUp(amount)
+    amount = amount or Underclip.total
+    task.spawn(function()
+        local done = 0
+        while done < amount do
+            if not root or not root.Parent then break end
+            root.CFrame = root.CFrame * CFrame.new(0, Underclip.step, 0)
+            done += Underclip.step
+            task.wait(Underclip.interval)
+        end
+    end)
+end
+
+-- Горячие клавиши: Ctrl+Down — вниз, Ctrl+Up — вверх
+UIS.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if UIS:IsKeyDown(Enum.KeyCode.LeftControl) or UIS:IsKeyDown(Enum.KeyCode.RightControl) then
+        if input.KeyCode == Enum.KeyCode.Down then
+            startUnderclip()
+        elseif input.KeyCode == Enum.KeyCode.Up then
+            softUnclipUp()
+        end
     end
 end)
 
--- ▲▲▲ END UNDERCLIP ▲▲▲
 
 
 -- =========================
